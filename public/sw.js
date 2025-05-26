@@ -81,15 +81,20 @@ self.addEventListener('activate', (event) => {
     const cacheWhitelist = [CACHE_NAME];
 
     event.waitUntil(
-        caches.keys().then((cacheNames) => {
-            return Promise.all(
-                cacheNames.map((cacheName) => {
-                    if (cacheWhitelist.indexOf(cacheName) === -1) {
-                        return caches.delete(cacheName);
-                    }
-                })
-            );
-        })
+        Promise.all([
+            // 이전 캐시 정리
+            caches.keys().then((cacheNames) => {
+                return Promise.all(
+                    cacheNames.map((cacheName) => {
+                        if (cacheWhitelist.indexOf(cacheName) === -1) {
+                            return caches.delete(cacheName);
+                        }
+                    })
+                );
+            }),
+            // 클라이언트 제어 시작
+            self.clients.claim()
+        ])
     );
 });
 
@@ -122,31 +127,109 @@ if (firebaseConfig.apiKey !== "your_api_key_here") {
             icon: '/icons/icon-192x192.svg',
             badge: '/icons/icon-192x192.svg',
             tag: 'fcm-notification',
-            data: payload.data
+            data: payload.data || {},
+            requireInteraction: true,
+            silent: false,
+            vibrate: [200, 100, 200],
+            actions: [
+                {
+                    action: 'open',
+                    title: '열기',
+                    icon: '/icons/icon-192x192.svg'
+                },
+                {
+                    action: 'close',
+                    title: '닫기'
+                }
+            ]
         };
 
-        self.registration.showNotification(notificationTitle, notificationOptions);
-    });
-
-    // 알림 클릭 처리
-    self.addEventListener('notificationclick', (event) => {
-        console.log('알림 클릭됨:', event);
-        event.notification.close();
-
-        // 앱 열기
-        event.waitUntil(
-            clients.matchAll({ type: 'window' }).then((clientList) => {
-                for (const client of clientList) {
-                    if (client.url === '/' && 'focus' in client) {
-                        return client.focus();
-                    }
-                }
-                if (clients.openWindow) {
-                    return clients.openWindow('/');
-                }
-            })
-        );
+        return self.registration.showNotification(notificationTitle, notificationOptions);
     });
 }
+
+// 알림 클릭 처리 (개선된 버전)
+self.addEventListener('notificationclick', (event) => {
+    console.log('알림 클릭됨:', event);
+
+    const notification = event.notification;
+    const action = event.action;
+
+    notification.close();
+
+    if (action === 'close') {
+        // 닫기 액션 - 아무것도 하지 않음
+        return;
+    }
+
+    // 앱 열기 (기본 액션 또는 '열기' 액션)
+    event.waitUntil(
+        clients.matchAll({
+            type: 'window',
+            includeUncontrolled: true
+        }).then((clientList) => {
+            // 이미 열린 창이 있는지 확인
+            for (const client of clientList) {
+                if (client.url.includes(self.location.origin) && 'focus' in client) {
+                    console.log('기존 창에 포커스');
+                    return client.focus();
+                }
+            }
+
+            // 새 창 열기
+            if (clients.openWindow) {
+                console.log('새 창 열기');
+                const urlToOpen = notification.data?.url || '/';
+                return clients.openWindow(urlToOpen);
+            }
+        }).catch(err => {
+            console.error('알림 클릭 처리 오류:', err);
+        })
+    );
+});
+
+// 알림 닫기 처리
+self.addEventListener('notificationclose', (event) => {
+    console.log('알림 닫힘:', event);
+    // 필요시 분석 데이터 전송
+});
+
+// 푸시 이벤트 처리 (FCM 외의 푸시도 처리)
+self.addEventListener('push', (event) => {
+    console.log('푸시 이벤트 수신:', event);
+
+    if (event.data) {
+        try {
+            const payload = event.data.json();
+            console.log('푸시 데이터:', payload);
+
+            const notificationTitle = payload.notification?.title || payload.title || '새 알림';
+            const notificationOptions = {
+                body: payload.notification?.body || payload.body || '새로운 메시지가 도착했습니다.',
+                icon: payload.notification?.icon || '/icons/icon-192x192.svg',
+                badge: '/icons/icon-192x192.svg',
+                tag: payload.tag || 'push-notification',
+                data: payload.data || payload,
+                requireInteraction: true,
+                silent: false,
+                vibrate: [200, 100, 200]
+            };
+
+            event.waitUntil(
+                self.registration.showNotification(notificationTitle, notificationOptions)
+            );
+        } catch (error) {
+            console.error('푸시 데이터 파싱 오류:', error);
+            // 기본 알림 표시
+            event.waitUntil(
+                self.registration.showNotification('새 알림', {
+                    body: '새로운 메시지가 도착했습니다.',
+                    icon: '/icons/icon-192x192.svg',
+                    tag: 'default-notification'
+                })
+            );
+        }
+    }
+});
 
 console.log('통합 서비스 워커 설정 완료'); 

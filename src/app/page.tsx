@@ -774,6 +774,70 @@ export default function Home() {
           >
             🔧 API 상태 확인
           </button>
+
+          <button
+            className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
+            onClick={async () => {
+              try {
+                // Android 푸시 알림 디버깅 정보 수집
+                const debugInfo: Record<string, unknown> = {
+                  userAgent: navigator.userAgent,
+                  platform: navigator.platform,
+                  isAndroid: /Android/i.test(navigator.userAgent),
+                  isChrome: /Chrome/i.test(navigator.userAgent),
+                  notificationPermission: "Notification" in window ? Notification.permission : "not supported",
+                  serviceWorkerSupport: "serviceWorker" in navigator,
+                  pushManagerSupport: "PushManager" in window,
+                  fcmToken: fcmToken ? "present" : "missing",
+                  vapidKey: process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY ? "configured" : "missing",
+                  manifestUrl: "/manifest.json",
+                  swUrl: "/sw.js",
+                };
+
+                // 서비스 워커 상태 확인
+                if ("serviceWorker" in navigator) {
+                  try {
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    debugInfo.swRegistration = registration
+                      ? {
+                          scope: registration.scope,
+                          state: registration.active?.state,
+                          onupdatefound: registration.onupdatefound ? "present" : "none",
+                        }
+                      : "not registered";
+                  } catch (swError) {
+                    debugInfo.swRegistration = `error: ${swError instanceof Error ? swError.message : String(swError)}`;
+                  }
+                }
+
+                // Push Manager 상태 확인
+                if ("serviceWorker" in navigator && "PushManager" in window) {
+                  try {
+                    const registration = await navigator.serviceWorker.getRegistration();
+                    if (registration) {
+                      const subscription = await registration.pushManager.getSubscription();
+                      debugInfo.pushSubscription = subscription ? "active" : "none";
+                    }
+                  } catch (pushError) {
+                    debugInfo.pushSubscription = `error: ${pushError instanceof Error ? pushError.message : String(pushError)}`;
+                  }
+                }
+
+                console.log("Android 푸시 알림 디버깅:", debugInfo);
+
+                const debugText = Object.entries(debugInfo)
+                  .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : value}`)
+                  .join("\n");
+
+                alert(`🤖 Android 푸시 알림 디버깅 정보:\n\n${debugText}`);
+              } catch (error) {
+                console.error("디버깅 정보 수집 오류:", error);
+                alert(`❌ 디버깅 정보 수집 실패:\n${error instanceof Error ? error.message : String(error)}`);
+              }
+            }}
+          >
+            🤖 Android 디버깅 정보
+          </button>
         </div>
 
         {/* 디버깅 정보 표시 */}
