@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { requestNotificationPermission, onMessageListener } from "@/lib/firebase";
+import { createForegroundNotification } from "@/lib/utils/notification";
 
 // PWA 설치 이벤트에 대한 타입 정의
 interface BeforeInstallPromptEvent extends Event {
@@ -22,13 +24,21 @@ export default function Home() {
   const [debugInfo, setDebugInfo] = useState<string>("");
   const [showCustomBanner, setShowCustomBanner] = useState(false);
   const [currentTime, setCurrentTime] = useState<string>("");
+  const [isClient, setIsClient] = useState(false);
   const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
+  const [fcmToken, setFcmToken] = useState<string | null>(null);
+  const [notificationStatus, setNotificationStatus] = useState("알림 권한 확인 중...");
+  const [isNotificationLoading, setIsNotificationLoading] = useState(false);
+  const [browserPermission, setBrowserPermission] = useState<string>("확인 중...");
 
   // 빌드 시간과 버전 정보 (환경 변수에서 가져오기)
-  const buildTime = process.env.BUILD_TIME || new Date().toISOString();
-  const buildVersion = process.env.BUILD_VERSION || `v1.0.${Math.floor(Date.now() / 1000)}`;
+  const buildTime = process.env.BUILD_TIME || "2024-01-01T00:00:00.000Z";
+  const buildVersion = process.env.BUILD_VERSION || "v1.0.0";
 
   useEffect(() => {
+    // 클라이언트 사이드 렌더링 확인
+    setIsClient(true);
+
     // 현재 시간 업데이트
     const updateCurrentTime = () => {
       setCurrentTime(
@@ -46,6 +56,29 @@ export default function Home() {
 
     updateCurrentTime();
     const timeInterval = setInterval(updateCurrentTime, 1000);
+
+    // 브라우저 알림 권한 상태 업데이트
+    let permissionCheckInterval: NodeJS.Timeout | null = null;
+
+    if (typeof window !== "undefined" && "Notification" in window) {
+      setBrowserPermission(Notification.permission);
+
+      // 권한 상태 변경 감지를 위한 주기적 확인
+      permissionCheckInterval = setInterval(() => {
+        const currentPermission = Notification.permission;
+        setBrowserPermission(currentPermission);
+
+        // 권한이 변경되었을 때 상태 업데이트
+        if (currentPermission === "denied" && notificationStatus !== "알림 권한 거부됨") {
+          setNotificationStatus("알림 권한 거부됨");
+          setFcmToken(null);
+          localStorage.removeItem("fcm-token");
+        } else if (currentPermission === "granted" && !fcmToken && notificationStatus !== "FCM 토큰 생성 실패") {
+          // 권한이 허용되었지만 토큰이 없고 이전에 실패하지 않은 경우에만
+          console.log("권한이 허용되었습니다. FCM 토큰을 다시 요청합니다.");
+        }
+      }, 2000); // 2초마다 확인
+    }
 
     // ESC 키로 다이얼로그 닫기
     const handleEscKey = (event: KeyboardEvent) => {
@@ -104,23 +137,81 @@ export default function Home() {
       setDebugInfo(debugText);
       console.log("PWA 설치 조건:", conditions);
 
+      // 설치 배너 비활성화
       // beforeinstallprompt가 5초 후에도 발생하지 않으면 커스텀 배너 표시
-      if (!conditions.beforeInstallPromptFired && !conditions.isStandalone) {
-        setTimeout(() => {
-          if (!deferredPrompt) {
-            console.log("beforeinstallprompt 이벤트가 발생하지 않아 커스텀 배너를 표시합니다.");
-            // iOS Safari인 경우 iOS 전용 가이드 표시
-            if (conditions.isIOS && conditions.isSafari) {
-              setShowIOSInstallGuide(true);
-            } else {
-              setShowCustomBanner(true);
-            }
-          }
-        }, 5000);
-      }
+      // if (!conditions.beforeInstallPromptFired && !conditions.isStandalone) {
+      //   setTimeout(() => {
+      //     if (!deferredPrompt) {
+      //       console.log("beforeinstallprompt 이벤트가 발생하지 않아 커스텀 배너를 표시합니다.");
+      //       // iOS Safari인 경우 iOS 전용 가이드 표시
+      //       if (conditions.isIOS && conditions.isSafari) {
+      //         setShowIOSInstallGuide(true);
+      //       } else {
+      //         setShowCustomBanner(true);
+      //       }
+      //     }
+      //   }, 5000);
+      // }
     };
 
     checkPWAConditions();
+
+    // FCM 초기화 및 포그라운드 메시지 리스너 설정
+    const initializeFCM = async () => {
+      try {
+        // 알림 권한 확인
+        if ("Notification" in window) {
+          const permission = Notification.permission;
+          console.log("초기 알림 권한 상태:", permission);
+          setBrowserPermission(permission);
+
+          if (permission === "granted") {
+            // 권한이 허용되어 있어도 실제로 FCM 토큰을 생성할 수 있는지 확인
+            setNotificationStatus("FCM 토큰 확인 중...");
+            const result = await requestNotificationPermission();
+            if (result.success && result.token) {
+              setFcmToken(result.token);
+              setNotificationStatus("알림 권한 허용됨");
+              console.log("FCM Token 저장됨:", result.token);
+              // 토큰을 로컬 스토리지에 저장
+              localStorage.setItem("fcm-token", result.token);
+            } else {
+              console.warn("FCM 토큰 생성 실패:", result.error);
+              setNotificationStatus("FCM 토큰 생성 실패");
+              // 실제 권한 상태 재확인
+              setBrowserPermission(Notification.permission);
+            }
+          } else if (permission === "denied") {
+            setNotificationStatus("알림 권한 거부됨");
+          } else {
+            setNotificationStatus("알림 권한 요청 필요");
+          }
+        } else {
+          setNotificationStatus("알림 지원되지 않음");
+        }
+
+        // 포그라운드 메시지 리스너
+        onMessageListener()
+          .then((payload: unknown) => {
+            console.log("포그라운드 메시지 수신:", payload);
+            // 포그라운드에서 알림 표시 (메인 스레드에서만)
+            if (payload && typeof payload === "object") {
+              const messagePayload = payload as { notification?: { title?: string; body?: string } };
+              createForegroundNotification({
+                title: messagePayload.notification?.title || "새 알림",
+                body: messagePayload.notification?.body,
+                icon: "/icons/icon-192x192.svg",
+              });
+            }
+          })
+          .catch((err) => console.log("포그라운드 메시지 리스너 오류:", err));
+      } catch (error) {
+        console.error("FCM 초기화 오류:", error);
+        setNotificationStatus("FCM 초기화 실패");
+      }
+    };
+
+    initializeFCM();
 
     // 설치 버튼 이벤트 처리
     const handleBeforeInstallPrompt = (e: Event) => {
@@ -136,10 +227,13 @@ export default function Home() {
 
     return () => {
       clearInterval(timeInterval);
+      if (permissionCheckInterval) {
+        clearInterval(permissionCheckInterval);
+      }
       document.removeEventListener("keydown", handleEscKey);
       window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
     };
-  }, [deferredPrompt, showCustomBanner, showIOSInstallGuide]);
+  }, [deferredPrompt, showCustomBanner, showIOSInstallGuide, fcmToken, notificationStatus]);
 
   const handleInstallClick = async () => {
     if (!deferredPrompt) {
@@ -196,21 +290,182 @@ export default function Home() {
     alert("지원되는 기능:\n" + features);
   };
 
-  // 강제로 설치 프롬프트 테스트
-  const forceInstallPrompt = () => {
-    // 실제 beforeinstallprompt 이벤트가 있는지 확인
-    if (deferredPrompt) {
-      handleInstallClick();
-    } else {
-      // 커스텀 배너 표시
-      setShowCustomBanner(true);
-      alert("beforeinstallprompt 이벤트가 발생하지 않았습니다. 커스텀 설치 안내를 표시합니다.");
-    }
-  };
+  // 강제로 설치 프롬프트 테스트 함수 제거됨 (사용되지 않음)
 
   // 페이지 새로고침
   const refreshPage = () => {
     window.location.reload();
+  };
+
+  // 알림 권한 요청
+  const requestNotificationPermissionHandler = async () => {
+    setIsNotificationLoading(true);
+
+    // 요청 전 현재 상태 로깅
+    console.log("권한 요청 전 상태:", {
+      notificationPermission: typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unknown",
+      currentStatus: notificationStatus,
+      browserPermission: browserPermission,
+    });
+
+    try {
+      const result = await requestNotificationPermission();
+      console.log("권한 요청 결과:", result);
+
+      if (result.success && result.token) {
+        setFcmToken(result.token);
+        setNotificationStatus("알림 권한 허용됨");
+        setBrowserPermission(result.permission || "granted");
+        localStorage.setItem("fcm-token", result.token);
+        alert("알림 권한이 허용되었습니다!\nFCM 토큰: " + result.token.substring(0, 50) + "...");
+      } else {
+        // 권한 상태에 따른 정확한 메시지 표시
+        if (result.permission === "denied") {
+          setNotificationStatus("알림 권한 거부됨");
+          setBrowserPermission("denied");
+          alert("알림 권한이 거부되었습니다.");
+        } else if (result.permission === "default") {
+          setNotificationStatus("알림 권한 요청 필요");
+          setBrowserPermission("default");
+          alert("알림 권한 요청이 취소되었습니다.");
+        } else if (result.permission === "granted") {
+          setNotificationStatus("FCM 토큰 생성 실패");
+          setBrowserPermission("granted");
+          alert("알림 권한은 허용되었지만 FCM 토큰 생성에 실패했습니다.\n오류: " + result.error);
+        } else {
+          setNotificationStatus("알림 권한 요청 실패");
+          setBrowserPermission("unknown");
+          alert("알림 권한 요청 중 오류가 발생했습니다.\n오류: " + result.error);
+        }
+      }
+    } catch (error) {
+      console.error("알림 권한 요청 오류:", error);
+      setNotificationStatus("알림 권한 요청 실패");
+      alert("알림 권한 요청 중 오류가 발생했습니다.");
+    } finally {
+      setIsNotificationLoading(false);
+    }
+  };
+
+  // 테스트 알림 발송
+  const sendTestNotification = async () => {
+    if (!fcmToken) {
+      alert("FCM 토큰이 없습니다. 먼저 알림 권한을 허용해주세요.");
+      return;
+    }
+
+    setIsNotificationLoading(true);
+    console.log("테스트 알림 발송 시작...");
+
+    try {
+      const notificationData = {
+        token: fcmToken,
+        title: "🔔 TWA 테스트 알림",
+        message: `테스트 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+        data: {
+          testData: "test-value",
+          timestamp: Date.now().toString(),
+          url: window.location.href,
+        },
+      };
+
+      console.log("발송할 알림 데이터:", notificationData);
+
+      const response = await fetch("/api/send-notification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(notificationData),
+      });
+
+      const result = await response.json();
+      console.log("알림 발송 응답:", result);
+
+      if (result.success) {
+        alert(
+          `✅ 테스트 알림이 성공적으로 발송되었습니다!\n\n📱 알림이 표시되지 않는다면:\n1. 브라우저 알림 설정을 확인하세요\n2. 다른 탭에서 앱을 열어보세요\n3. 모바일에서는 백그라운드 상태로 전환해보세요`
+        );
+
+        // 포그라운드에서도 알림 표시 (테스트용, 메인 스레드에서만)
+        createForegroundNotification({
+          title: "🔔 TWA 테스트 알림",
+          body: `포그라운드 테스트 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+          icon: "/icons/icon-192x192.svg",
+          tag: "test-notification",
+        });
+      } else {
+        console.error("알림 발송 실패:", result);
+        alert(`❌ 알림 발송 실패\n\n오류: ${result.error}\n상세: ${result.details || "없음"}`);
+      }
+    } catch (error) {
+      console.error("알림 발송 오류:", error);
+      alert(`❌ 알림 발송 중 오류가 발생했습니다.\n\n오류: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsNotificationLoading(false);
+    }
+  };
+
+  // 모든 저장된 토큰에 알림 발송 (시뮬레이션)
+  const sendBroadcastNotification = async () => {
+    const savedTokens = localStorage.getItem("fcm-token");
+    if (!savedTokens) {
+      alert("저장된 FCM 토큰이 없습니다.");
+      return;
+    }
+
+    setIsNotificationLoading(true);
+    console.log("전체 알림 발송 시작...");
+
+    try {
+      const broadcastData = {
+        tokens: [savedTokens], // 실제로는 여러 토큰 배열
+        title: "📢 전체 알림",
+        message: `모든 사용자에게 보내는 알림입니다! ${new Date().toLocaleTimeString("ko-KR")}`,
+        data: {
+          type: "broadcast",
+          timestamp: Date.now().toString(),
+          url: window.location.href,
+        },
+      };
+
+      console.log("발송할 전체 알림 데이터:", broadcastData);
+
+      const response = await fetch("/api/send-notification", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(broadcastData),
+      });
+
+      const result = await response.json();
+      console.log("전체 알림 발송 응답:", result);
+
+      if (result.success) {
+        alert(
+          `✅ 전체 알림이 성공적으로 발송되었습니다!\n\n발송 결과:\n- 성공: ${result.result?.successCount || 1}개\n- 실패: ${
+            result.result?.failureCount || 0
+          }개`
+        );
+
+        // 포그라운드에서도 알림 표시 (테스트용, 메인 스레드에서만)
+        createForegroundNotification({
+          title: "📢 전체 알림",
+          body: `전체 사용자 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+          icon: "/icons/icon-192x192.svg",
+          tag: "broadcast-notification",
+        });
+      } else {
+        console.error("전체 알림 발송 실패:", result);
+        alert(`❌ 전체 알림 발송 실패\n\n오류: ${result.error}\n상세: ${result.details || "없음"}`);
+      }
+    } catch (error) {
+      console.error("전체 알림 발송 오류:", error);
+      alert(`❌ 전체 알림 발송 중 오류가 발생했습니다.\n\n오류: ${error instanceof Error ? error.message : String(error)}`);
+    } finally {
+      setIsNotificationLoading(false);
+    }
   };
 
   return (
@@ -347,15 +602,17 @@ export default function Home() {
                 timeZone: "Asia/Seoul",
               })}
             </div>
-            <div>현재 시간: {currentTime}</div>
+            <div>현재 시간: {isClient ? currentTime : "로딩 중..."}</div>
             <div className="text-indigo-600 dark:text-indigo-400">버전: {buildVersion}</div>
             <div className="text-xs text-gray-500 dark:text-gray-500">
               마지막 새로고침:{" "}
-              {new Date().toLocaleString("ko-KR", {
-                hour: "2-digit",
-                minute: "2-digit",
-                second: "2-digit",
-              })}
+              {isClient
+                ? new Date().toLocaleString("ko-KR", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    second: "2-digit",
+                  })
+                : "로딩 중..."}
             </div>
           </div>
         </div>
@@ -382,14 +639,54 @@ export default function Home() {
           </div>
         </div>
 
+        {/* FCM 알림 상태 */}
+        <div className="w-full p-4 mb-6 bg-orange-50 dark:bg-orange-900/30 rounded-lg">
+          <h2 className="text-lg font-semibold mb-2 text-orange-700 dark:text-orange-300">🔔 푸시 알림 상태</h2>
+          <div className="space-y-2">
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              상태: <span className="font-medium">{notificationStatus}</span>
+            </p>
+
+            {/* 권한 거부됨 상태일 때 도움말 표시 */}
+            {notificationStatus === "알림 권한 거부됨" && (
+              <div className="mt-3 p-3 bg-red-100 dark:bg-red-900/30 rounded-lg border border-red-200 dark:border-red-800">
+                <p className="text-sm font-medium text-red-700 dark:text-red-300 mb-2">⚠️ 알림 권한이 거부되었습니다</p>
+                <div className="text-xs text-red-600 dark:text-red-400 space-y-1">
+                  <p>
+                    <strong>Chrome에서 권한 재설정 방법:</strong>
+                  </p>
+                  <p>1. 주소창 왼쪽 🔒 아이콘 클릭</p>
+                  <p>2. &quot;알림&quot; 설정을 &quot;허용&quot;으로 변경</p>
+                  <p>3. 페이지 새로고침 후 다시 시도</p>
+                </div>
+              </div>
+            )}
+
+            {fcmToken && (
+              <div className="text-xs text-gray-600 dark:text-gray-400">
+                <p className="mb-1">FCM 토큰:</p>
+                <p className="break-all bg-gray-100 dark:bg-gray-700 p-2 rounded font-mono">{fcmToken.substring(0, 50)}...</p>
+              </div>
+            )}
+
+            {/* 현재 브라우저 알림 권한 상태 표시 */}
+            <div className="text-xs text-gray-500 dark:text-gray-400">
+              <p>
+                브라우저 알림 권한: <span className="font-mono">{browserPermission}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
         <div className="w-full flex flex-col gap-3">
-          <button
+          {/* 앱 설치하기 버튼 숨김 */}
+          {/* <button
             className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
             id="install-button"
             onClick={handleInstallClick}
           >
             앱 설치하기
-          </button>
+          </button> */}
           <button
             className="w-full py-3 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-medium rounded-lg transition-colors"
             id="check-features"
@@ -397,11 +694,85 @@ export default function Home() {
           >
             기능 확인하기
           </button>
-          <button className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors" onClick={forceInstallPrompt}>
+          {/* 설치 프롬프트 강제 실행 버튼 숨김 */}
+          {/* <button className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors" onClick={forceInstallPrompt}>
             설치 프롬프트 강제 실행
-          </button>
+          </button> */}
+
+          {/* FCM 알림 버튼들 */}
+          <div className="w-full border-t pt-3 mt-3">
+            <h3 className="text-sm font-medium mb-3 text-gray-700 dark:text-gray-300">🔔 푸시 알림 테스트</h3>
+            <div className="space-y-2">
+              {!fcmToken ? (
+                <button
+                  className="w-full py-3 px-4 bg-orange-600 hover:bg-orange-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                  onClick={requestNotificationPermissionHandler}
+                  disabled={isNotificationLoading}
+                >
+                  {isNotificationLoading ? "처리 중..." : "🔔 알림 권한 요청"}
+                </button>
+              ) : (
+                <>
+                  <button
+                    className="w-full py-3 px-4 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                    onClick={sendTestNotification}
+                    disabled={isNotificationLoading}
+                  >
+                    {isNotificationLoading ? "발송 중..." : "📱 테스트 알림 발송"}
+                  </button>
+                  <button
+                    className="w-full py-3 px-4 bg-pink-600 hover:bg-pink-700 disabled:bg-gray-400 text-white font-medium rounded-lg transition-colors"
+                    onClick={sendBroadcastNotification}
+                    disabled={isNotificationLoading}
+                  >
+                    {isNotificationLoading ? "발송 중..." : "📢 전체 알림 발송"}
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+
           <button className="w-full py-3 px-4 bg-purple-600 hover:bg-purple-700 text-white font-medium rounded-lg transition-colors" onClick={refreshPage}>
             🔄 페이지 새로고침
+          </button>
+
+          <button
+            className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg transition-colors"
+            onClick={() => {
+              const currentPermission = typeof window !== "undefined" && "Notification" in window ? Notification.permission : "unknown";
+              const debugInfo = {
+                browserPermission: currentPermission,
+                statePermission: browserPermission,
+                notificationStatus: notificationStatus,
+                fcmToken: fcmToken ? "있음" : "없음",
+                localStorage: localStorage.getItem("fcm-token") ? "있음" : "없음",
+              };
+              console.log("권한 상태 디버깅:", debugInfo);
+              alert(`권한 상태 디버깅:\n${JSON.stringify(debugInfo, null, 2)}`);
+            }}
+          >
+            🔍 권한 상태 확인
+          </button>
+
+          <button
+            className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors"
+            onClick={async () => {
+              try {
+                const response = await fetch("/api/send-notification", {
+                  method: "GET",
+                });
+                const result = await response.json();
+                console.log("API 상태:", result);
+                alert(
+                  `🔧 API 상태 확인:\n\n${result.message}\n\n사용 가능한 엔드포인트:\n- POST: ${result.endpoints?.POST}\n\n필수 파라미터:\n- title: ${result.endpoints?.body?.title}\n- message: ${result.endpoints?.body?.message}\n- token 또는 tokens 필요`
+                );
+              } catch (error) {
+                console.error("API 상태 확인 오류:", error);
+                alert(`❌ API 상태 확인 실패:\n${error instanceof Error ? error.message : String(error)}`);
+              }
+            }}
+          >
+            🔧 API 상태 확인
           </button>
         </div>
 

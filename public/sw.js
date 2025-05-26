@@ -5,8 +5,8 @@ const CACHE_NAME = 'twa-test-v1';
 const urlsToCache = [
     '/',
     '/manifest.json',
-    '/icons/icon-192x192.png',
-    '/icons/icon-512x512.png'
+    '/icons/icon-192x192.svg',
+    '/icons/icon-512x512.svg'
 ];
 
 // 서비스 워커 설치
@@ -15,13 +15,38 @@ self.addEventListener('install', (event) => {
         caches.open(CACHE_NAME)
             .then((cache) => {
                 console.log('Opened cache');
-                return cache.addAll(urlsToCache);
+                // 각 URL을 개별적으로 캐시하여 에러 방지
+                return Promise.allSettled(
+                    urlsToCache.map(url => {
+                        return cache.add(url).catch(err => {
+                            console.warn(`Failed to cache ${url}:`, err);
+                            return null;
+                        });
+                    })
+                );
+            })
+            .then(() => {
+                console.log('Cache installation completed');
+                // 즉시 활성화
+                return self.skipWaiting();
+            })
+            .catch(err => {
+                console.error('Cache installation failed:', err);
             })
     );
 });
 
 // 네트워크 요청 인터셉트
 self.addEventListener('fetch', (event) => {
+    // POST 요청이나 Firebase API 요청은 캐시하지 않음
+    if (event.request.method !== 'GET' ||
+        event.request.url.includes('googleapis.com') ||
+        event.request.url.includes('firebase') ||
+        event.request.url.includes('/api/')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
     event.respondWith(
         caches.match(event.request)
             .then((response) => {
@@ -66,4 +91,62 @@ self.addEventListener('activate', (event) => {
             );
         })
     );
-}); 
+});
+
+// Firebase Cloud Messaging 설정
+importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
+importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
+
+// Firebase 설정 (실제 값으로 교체 필요)
+const firebaseConfig = {
+    apiKey: "your_api_key_here",
+    authDomain: "your_project_id.firebaseapp.com",
+    projectId: "your_project_id",
+    storageBucket: "your_project_id.appspot.com",
+    messagingSenderId: "your_sender_id",
+    appId: "your_app_id"
+};
+
+// Firebase 초기화 (환경 변수가 설정된 경우에만)
+if (firebaseConfig.apiKey !== "your_api_key_here") {
+    firebase.initializeApp(firebaseConfig);
+    const messaging = firebase.messaging();
+
+    // 백그라운드 메시지 처리
+    messaging.onBackgroundMessage((payload) => {
+        console.log('백그라운드 메시지 수신:', payload);
+
+        const notificationTitle = payload.notification?.title || '새 알림';
+        const notificationOptions = {
+            body: payload.notification?.body || '새로운 메시지가 도착했습니다.',
+            icon: '/icons/icon-192x192.svg',
+            badge: '/icons/icon-192x192.svg',
+            tag: 'fcm-notification',
+            data: payload.data
+        };
+
+        self.registration.showNotification(notificationTitle, notificationOptions);
+    });
+
+    // 알림 클릭 처리
+    self.addEventListener('notificationclick', (event) => {
+        console.log('알림 클릭됨:', event);
+        event.notification.close();
+
+        // 앱 열기
+        event.waitUntil(
+            clients.matchAll({ type: 'window' }).then((clientList) => {
+                for (const client of clientList) {
+                    if (client.url === '/' && 'focus' in client) {
+                        return client.focus();
+                    }
+                }
+                if (clients.openWindow) {
+                    return clients.openWindow('/');
+                }
+            })
+        );
+    });
+}
+
+console.log('통합 서비스 워커 설정 완료'); 
