@@ -1,3 +1,25 @@
+/**
+ * Firebase Admin SDK - 서버 사이드 알림 발송 전용 파일
+ *
+ * 🎯 주요 용도:
+ * - 서버에서 클라이언트로 푸시 알림 발송
+ * - Firebase 프로젝트의 관리자 권한으로 작업
+ * - 단일/다중 사용자에게 동시 알림 발송
+ *
+ * 🖥️ 실행 환경: Next.js API 라우트 (서버 사이드)
+ * 🔑 권한 수준: Firebase 관리자 권한 (비공개 키 사용)
+ * 📤 주요 기능: 알림 발송만 담당 (수신 기능 없음)
+ *
+ * 🔄 사용 흐름:
+ * 1. API 라우트에서 이 파일의 함수 호출
+ * 2. Firebase Admin SDK로 FCM 서버에 알림 발송 요청
+ * 3. FCM 서버가 사용자 디바이스로 알림 전달
+ *
+ * ⚠️ 주의사항:
+ * - 서버 환경에서만 실행 (브라우저에서 실행 불가)
+ * - 비공개 환경 변수 필요 (FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL, FIREBASE_PRIVATE_KEY)
+ */
+
 import { initializeApp, getApps, cert } from "firebase-admin/app";
 import { getMessaging } from "firebase-admin/messaging";
 
@@ -42,6 +64,17 @@ if (requiredEnvVars.projectId && requiredEnvVars.clientEmail && requiredEnvVars.
 
 export { adminMessaging };
 
+/**
+ * 단일 사용자에게 푸시 알림 발송
+ *
+ * @param token - 대상 사용자의 FCM 토큰 (firebase.ts에서 생성된 토큰)
+ * @param title - 알림 제목
+ * @param body - 알림 내용
+ * @param data - 추가 데이터 (선택사항)
+ * @returns 발송 결과 객체 { success: boolean, messageId?: string, error?: any }
+ *
+ * 💡 사용 예시: 특정 사용자에게 개인 알림 발송
+ */
 export const sendNotificationToToken = async (token: string, title: string, body: string, data?: Record<string, string>) => {
   if (!adminMessaging) {
     console.error("Firebase Admin SDK가 초기화되지 않았습니다.");
@@ -72,6 +105,17 @@ export const sendNotificationToToken = async (token: string, title: string, body
   }
 };
 
+/**
+ * 여러 사용자에게 동시 푸시 알림 발송 (브로드캐스트)
+ *
+ * @param tokens - 대상 사용자들의 FCM 토큰 배열
+ * @param title - 알림 제목
+ * @param body - 알림 내용
+ * @param data - 추가 데이터 (선택사항)
+ * @returns 발송 결과 객체 { success: boolean, successCount: number, failureCount: number, responses: any[] }
+ *
+ * 💡 사용 예시: 전체 사용자에게 공지사항 발송, 그룹 알림 등
+ */
 export const sendNotificationToMultipleTokens = async (tokens: string[], title: string, body: string, data?: Record<string, string>) => {
   if (!adminMessaging) {
     console.error("Firebase Admin SDK가 초기화되지 않았습니다.");

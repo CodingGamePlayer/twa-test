@@ -1,16 +1,24 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { usePWA } from "@/hooks/usePWA";
-import { useNotification } from "@/hooks/useNotification";
-import { useTime } from "@/hooks/useTime";
 import InstallGuideModal from "@/components/InstallGuideModal";
-import VersionInfo from "@/components/VersionInfo";
 import NotificationStatus from "@/components/NotificationStatus";
-import { handleCheckFeaturesClick, handlePermissionStatusCheck, handleAPIStatusCheck, handleAndroidDebugInfo } from "@/lib/utils/debug";
+import VersionInfo from "@/components/VersionInfo";
+import { useNotification } from "@/hooks/useNotification";
+import { usePWA } from "@/hooks/usePWA";
+import { useTime } from "@/hooks/useTime";
+import { useEffect, useState } from "react";
 
 export default function Home() {
   const [deviceInfo, setDeviceInfo] = useState("디바이스 정보를 불러오는 중...");
+  const [debugMessages, setDebugMessages] = useState<string[]>([]);
+  const [showPermissionDialog, setShowPermissionDialog] = useState(false);
+  const [permissionDialogData, setPermissionDialogData] = useState<string[]>([]);
+  const [showApiDialog, setShowApiDialog] = useState(false);
+  const [apiDialogData, setApiDialogData] = useState<string[]>([]);
+  const [showAndroidDialog, setShowAndroidDialog] = useState(false);
+  const [androidDialogData, setAndroidDialogData] = useState<string[]>([]);
+  const [showFeaturesDialog, setShowFeaturesDialog] = useState(false);
+  const [featuresDialogData, setFeaturesDialogData] = useState<string[]>([]);
 
   // 커스텀 훅 사용
   const { installStatus, deferredPrompt, debugInfo, showCustomBanner, setShowCustomBanner, showIOSInstallGuide, setShowIOSInstallGuide, handleInstallClick } =
@@ -41,6 +49,18 @@ export default function Home() {
         if (showIOSInstallGuide) {
           setShowIOSInstallGuide(false);
         }
+        if (showPermissionDialog) {
+          setShowPermissionDialog(false);
+        }
+        if (showApiDialog) {
+          setShowApiDialog(false);
+        }
+        if (showAndroidDialog) {
+          setShowAndroidDialog(false);
+        }
+        if (showFeaturesDialog) {
+          setShowFeaturesDialog(false);
+        }
       }
     };
 
@@ -49,11 +69,178 @@ export default function Home() {
     return () => {
       document.removeEventListener("keydown", handleEscKey);
     };
-  }, [showCustomBanner, showIOSInstallGuide, setShowCustomBanner, setShowIOSInstallGuide]);
+  }, [
+    showCustomBanner,
+    showIOSInstallGuide,
+    setShowCustomBanner,
+    setShowIOSInstallGuide,
+    showPermissionDialog,
+    setShowPermissionDialog,
+    showApiDialog,
+    setShowApiDialog,
+    showAndroidDialog,
+    setShowAndroidDialog,
+    showFeaturesDialog,
+    setShowFeaturesDialog,
+  ]);
+
+  // 디버깅 메시지 추가 함수
+  const addDebugMessage = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString("ko-KR");
+    const formattedMessage = `[${timestamp}] ${message}`;
+    setDebugMessages((prev) => [...prev.slice(-9), formattedMessage]); // 최대 10개 메시지 유지
+    console.log(formattedMessage);
+  };
 
   // 페이지 새로고침
   const refreshPage = () => {
     window.location.reload();
+  };
+
+  // 권한 상태 확인 핸들러 (디버깅 메시지 추가)
+  const handlePermissionStatusCheckWithDebug = () => {
+    addDebugMessage("🔍 권한 상태 확인 버튼 클릭됨");
+
+    try {
+      // 모바일 환경 상세 감지
+      const userAgent = navigator.userAgent;
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent);
+      const isAndroid = /Android/i.test(userAgent);
+      const isIOS = /iPhone|iPad|iPod/i.test(userAgent);
+      const isChrome = /Chrome/i.test(userAgent);
+      const isSamsung = /SamsungBrowser/i.test(userAgent);
+      const isPWAMode = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as { standalone?: boolean }).standalone === true;
+
+      // 알림 API 지원 상태 확인
+      const notificationSupported = "Notification" in window;
+      const currentPermission = notificationSupported ? Notification.permission : "N/A";
+
+      // 서비스 워커 상태 확인
+      const serviceWorkerSupported = "serviceWorker" in navigator;
+      const serviceWorkerStatus = serviceWorkerSupported ? "지원됨" : "미지원";
+
+      const permissionInfo = [
+        `📱 모바일 디바이스: ${isMobileDevice ? "✅" : "❌"}`,
+        `🤖 Android: ${isAndroid ? "✅" : "❌"}`,
+        `🍎 iOS: ${isIOS ? "✅" : "❌"}`,
+        `🌐 Chrome: ${isChrome ? "✅" : "❌"}`,
+        `📱 Samsung Browser: ${isSamsung ? "✅" : "❌"}`,
+        `📲 PWA 모드: ${isPWAMode ? "✅" : "❌"}`,
+        `🔔 알림 API 지원: ${notificationSupported ? "✅" : "❌"}`,
+        `🔐 현재 브라우저 권한: ${currentPermission}`,
+        `🎯 FCM 토큰: ${fcmToken ? "✅ 생성됨" : "❌ 없음"}`,
+        `📊 알림 상태: ${notificationStatus}`,
+        `🔧 서비스 워커: ${serviceWorkerStatus}`,
+        `🌍 User Agent: ${userAgent.substring(0, 80)}...`,
+      ];
+
+      // 다이얼로그 데이터 설정 및 표시
+      setPermissionDialogData(permissionInfo);
+      setShowPermissionDialog(true);
+
+      addDebugMessage(`📱 모바일: ${isMobileDevice ? "예" : "아니오"}, 알림지원: ${notificationSupported ? "예" : "아니오"}, 권한: ${currentPermission}`);
+      addDebugMessage("✅ 권한 상태 확인 완료 - 다이얼로그 표시됨");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addDebugMessage(`❌ 권한 상태 확인 오류: ${errorMessage}`);
+    }
+  };
+
+  // API 상태 확인 핸들러 (디버깅 메시지 추가)
+  const handleAPIStatusCheckWithDebug = () => {
+    addDebugMessage("🔧 API 상태 확인 버튼 클릭됨");
+
+    try {
+      const apiInfo = [
+        `🌍 User Agent: ${navigator.userAgent.substring(0, 80)}...`,
+        `💻 Platform: ${navigator.platform}`,
+        `🗣️ Language: ${navigator.language}`,
+        `🌐 Online: ${navigator.onLine ? "✅" : "❌"}`,
+        `🍪 Cookie Enabled: ${navigator.cookieEnabled ? "✅" : "❌"}`,
+        `📱 Mobile: ${/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ? "✅" : "❌"}`,
+        `📲 PWA: ${window.matchMedia("(display-mode: standalone)").matches || (window.navigator as { standalone?: boolean }).standalone === true ? "✅" : "❌"}`,
+        `📺 Screen: ${screen.width}x${screen.height}`,
+        `🎨 Color Depth: ${screen.colorDepth}bit`,
+        `⏰ Timezone: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`,
+        `🔧 Service Worker: ${"serviceWorker" in navigator ? "✅" : "❌"}`,
+        `💾 Local Storage: ${typeof Storage !== "undefined" ? "✅" : "❌"}`,
+      ];
+
+      setApiDialogData(apiInfo);
+      setShowApiDialog(true);
+      addDebugMessage("✅ API 상태 확인 완료 - 다이얼로그 표시됨");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addDebugMessage(`❌ API 상태 확인 오류: ${errorMessage}`);
+    }
+  };
+
+  // Android 디버깅 정보 핸들러 (디버깅 메시지 추가)
+  const handleAndroidDebugInfoWithDebug = () => {
+    addDebugMessage("🤖 Android 디버깅 정보 버튼 클릭됨");
+
+    try {
+      const userAgent = navigator.userAgent;
+      const isAndroid = /Android/i.test(userAgent);
+      const isChrome = /Chrome/i.test(userAgent);
+      const isSamsung = /SamsungBrowser/i.test(userAgent);
+      const isFirefox = /Firefox/i.test(userAgent);
+      const isEdge = /Edge/i.test(userAgent);
+      const isPWAMode = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as { standalone?: boolean }).standalone === true;
+
+      const androidInfo = [
+        `🤖 Android: ${isAndroid ? "✅" : "❌"}`,
+        `🌐 Chrome: ${isChrome ? "✅" : "❌"}`,
+        `📱 Samsung Browser: ${isSamsung ? "✅" : "❌"}`,
+        `🦊 Firefox: ${isFirefox ? "✅" : "❌"}`,
+        `🔷 Edge: ${isEdge ? "✅" : "❌"}`,
+        `📲 PWA 모드: ${isPWAMode ? "✅" : "❌"}`,
+        `📱 Standalone: ${(window.navigator as { standalone?: boolean }).standalone ? "✅" : "❌"}`,
+        `📱 Mobile: ${/Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(userAgent) ? "✅" : "❌"}`,
+        `🔔 Notification Permission: ${"Notification" in window ? Notification.permission : "N/A"}`,
+        `🔧 Service Worker: ${"serviceWorker" in navigator ? "✅" : "❌"}`,
+        `📳 Vibration API: ${"vibrate" in navigator ? "✅" : "❌"}`,
+        `📍 Geolocation: ${"geolocation" in navigator ? "✅" : "❌"}`,
+        `🌍 User Agent: ${userAgent}`,
+      ];
+
+      setAndroidDialogData(androidInfo);
+      setShowAndroidDialog(true);
+      addDebugMessage("✅ Android 디버깅 정보 확인 완료 - 다이얼로그 표시됨");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addDebugMessage(`❌ Android 디버깅 정보 오류: ${errorMessage}`);
+    }
+  };
+
+  // 기능 확인 핸들러 (디버깅 메시지 추가)
+  const handleCheckFeaturesClickWithDebug = () => {
+    addDebugMessage("기능 확인하기 버튼 클릭됨");
+
+    try {
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+      const isPWAMode = window.matchMedia("(display-mode: standalone)").matches || (window.navigator as { standalone?: boolean }).standalone === true;
+
+      const features = [
+        `🔧 Service Worker: ${typeof navigator !== "undefined" && "serviceWorker" in navigator ? "✅" : "❌"}`,
+        `📤 Push API: ${typeof window !== "undefined" && "PushManager" in window ? "✅" : "❌"}`,
+        `🔔 Notification API: ${typeof window !== "undefined" && "Notification" in window ? "✅" : "❌"}`,
+        `💾 Cache API: ${typeof window !== "undefined" && "caches" in window ? "✅" : "❌"}`,
+        `🗄️ IndexedDB: ${typeof window !== "undefined" && "indexedDB" in window ? "✅" : "❌"}`,
+        `📱 Mobile: ${isMobileDevice ? "✅" : "❌"}`,
+        `📲 PWA Mode: ${isPWAMode ? "✅" : "❌"}`,
+        `🔐 Notification Permission: ${typeof window !== "undefined" && "Notification" in window ? Notification.permission : "N/A"}`,
+        `🌐 Online: ${navigator.onLine ? "✅" : "❌"}`,
+        `🍪 Cookies: ${navigator.cookieEnabled ? "✅" : "❌"}`,
+      ];
+
+      setFeaturesDialogData(features);
+      setShowFeaturesDialog(true);
+      addDebugMessage("✅ 기능 확인 완료 - 다이얼로그 표시됨");
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      addDebugMessage(`❌ 기능 확인 오류: ${errorMessage}`);
+    }
   };
 
   return (
@@ -109,6 +296,234 @@ export default function Home() {
 
       {/* iOS Safari 설치 가이드 모달 */}
       <InstallGuideModal showIOSInstallGuide={showIOSInstallGuide} setShowIOSInstallGuide={setShowIOSInstallGuide} />
+
+      {/* 권한 상태 확인 다이얼로그 모달 */}
+      {showPermissionDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowPermissionDialog(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full p-6 transform transition-all animate-slideUp max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">🔍 권한 상태 확인</h3>
+              <button onClick={() => setShowPermissionDialog(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {permissionDialogData.map((info, index) => (
+                <div key={`permission-${index}`} className="py-2 px-3 bg-gray-50 dark:bg-gray-700">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{info || ""}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowPermissionDialog(false)}
+                className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-medium rounded-lg transition-colors"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(permissionDialogData.join("\n"))
+                    .then(() => {
+                      addDebugMessage("📋 권한 정보가 클립보드에 복사되었습니다");
+                    })
+                    .catch(() => {
+                      addDebugMessage("❌ 클립보드 복사 실패");
+                    });
+                }}
+                className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              >
+                📋 복사
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center mt-3">ESC 키를 눌러 닫을 수 있습니다</p>
+          </div>
+        </div>
+      )}
+
+      {/* API 상태 확인 다이얼로그 모달 */}
+      {showApiDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowApiDialog(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full p-6 transform transition-all animate-slideUp max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">🔧 API 상태 확인</h3>
+              <button onClick={() => setShowApiDialog(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {apiDialogData.map((info, index) => (
+                <div key={`api-${index}`} className="py-2 px-3 bg-gray-50 dark:bg-gray-700">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{info || ""}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowApiDialog(false)}
+                className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-medium rounded-lg transition-colors"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(apiDialogData.join("\n"))
+                    .then(() => {
+                      addDebugMessage("📋 API 정보가 클립보드에 복사되었습니다");
+                    })
+                    .catch(() => {
+                      addDebugMessage("❌ 클립보드 복사 실패");
+                    });
+                }}
+                className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              >
+                📋 복사
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center mt-3">ESC 키를 눌러 닫을 수 있습니다</p>
+          </div>
+        </div>
+      )}
+
+      {/* Android 디버깅 정보 다이얼로그 모달 */}
+      {showAndroidDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowAndroidDialog(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full p-6 transform transition-all animate-slideUp max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">🤖 Android 디버깅 정보</h3>
+              <button onClick={() => setShowAndroidDialog(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {androidDialogData.map((info, index) => (
+                <div key={`android-${index}`} className="py-2 px-3 bg-gray-50 dark:bg-gray-700">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{info || ""}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowAndroidDialog(false)}
+                className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-medium rounded-lg transition-colors"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(androidDialogData.join("\n"))
+                    .then(() => {
+                      addDebugMessage("📋 Android 정보가 클립보드에 복사되었습니다");
+                    })
+                    .catch(() => {
+                      addDebugMessage("❌ 클립보드 복사 실패");
+                    });
+                }}
+                className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              >
+                📋 복사
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center mt-3">ESC 키를 눌러 닫을 수 있습니다</p>
+          </div>
+        </div>
+      )}
+
+      {/* 기능 확인 다이얼로그 모달 */}
+      {showFeaturesDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50 p-4 animate-fadeIn"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setShowFeaturesDialog(false);
+            }
+          }}
+        >
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl max-w-lg w-full p-6 transform transition-all animate-slideUp max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">🔧 기능 확인</h3>
+              <button onClick={() => setShowFeaturesDialog(false)} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors">
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-1">
+              {featuresDialogData.map((info, index) => (
+                <div key={`features-${index}`} className="py-2 px-3 bg-gray-50 dark:bg-gray-700">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">{info || ""}</span>
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowFeaturesDialog(false)}
+                className="flex-1 py-2 px-4 bg-gray-200 dark:bg-gray-600 hover:bg-gray-300 dark:hover:bg-gray-500 text-gray-800 dark:text-white font-medium rounded-lg transition-colors"
+              >
+                닫기
+              </button>
+              <button
+                onClick={() => {
+                  navigator.clipboard
+                    .writeText(featuresDialogData.join("\n"))
+                    .then(() => {
+                      addDebugMessage("📋 기능 정보가 클립보드에 복사되었습니다");
+                    })
+                    .catch(() => {
+                      addDebugMessage("❌ 클립보드 복사 실패");
+                    });
+                }}
+                className="flex-1 py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-medium rounded-lg transition-colors"
+              >
+                📋 복사
+              </button>
+            </div>
+
+            <p className="text-xs text-gray-400 text-center mt-3">ESC 키를 눌러 닫을 수 있습니다</p>
+          </div>
+        </div>
+      )}
 
       <main className="flex flex-col items-center max-w-md w-full p-6 bg-white dark:bg-gray-800 rounded-xl shadow-lg">
         <h1 className="text-2xl font-bold text-center mb-6 text-gray-800 dark:text-white">PWA 테스트 애플리케이션</h1>
@@ -177,7 +592,7 @@ export default function Home() {
           <button
             className="w-full py-3 px-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-white font-medium rounded-lg transition-colors"
             id="check-features"
-            onClick={handleCheckFeaturesClick}
+            onClick={handleCheckFeaturesClickWithDebug}
           >
             기능 확인하기
           </button>
@@ -221,23 +636,42 @@ export default function Home() {
 
           <button
             className="w-full py-3 px-4 bg-yellow-600 hover:bg-yellow-700 text-white font-medium rounded-lg transition-colors"
-            onClick={() => handlePermissionStatusCheck(fcmToken, notificationStatus, browserPermission)}
+            onClick={handlePermissionStatusCheckWithDebug}
           >
             🔍 권한 상태 확인
           </button>
 
           <button
             className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-medium rounded-lg transition-colors"
-            onClick={handleAPIStatusCheck}
+            onClick={handleAPIStatusCheckWithDebug}
           >
             🔧 API 상태 확인
           </button>
 
           <button
             className="w-full py-3 px-4 bg-green-600 hover:bg-green-700 text-white font-medium rounded-lg transition-colors"
-            onClick={handleAndroidDebugInfo}
+            onClick={handleAndroidDebugInfoWithDebug}
           >
             🤖 Android 디버깅 정보
+          </button>
+        </div>
+
+        {/* 모바일 디버깅 메시지 */}
+        <div className="w-full mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/30 rounded-lg">
+          <h3 className="text-sm font-medium mb-2 text-yellow-700 dark:text-yellow-300">📱 모바일 디버깅 로그</h3>
+          <div className="space-y-1 max-h-32 overflow-y-auto">
+            {debugMessages.length === 0 ? (
+              <p className="text-xs text-gray-500">아직 디버그 메시지가 없습니다.</p>
+            ) : (
+              debugMessages.map((message, index) => (
+                <p key={`debug-${index}-${Date.now()}`} className="text-xs text-gray-600 dark:text-gray-400 font-mono">
+                  {message || ""}
+                </p>
+              ))
+            )}
+          </div>
+          <button onClick={() => setDebugMessages([])} className="mt-2 text-xs text-yellow-600 dark:text-yellow-400 hover:underline">
+            로그 지우기
           </button>
         </div>
 
