@@ -247,22 +247,28 @@ export default function Home() {
         // iOS Safari에서는 시각적 가이드 표시
         setShowIOSInstallGuide(true);
       } else if (isChrome && !isMobile) {
-        alert(`데스크톱 Chrome에서 PWA 설치하기:
-1. 주소창 오른쪽의 설치 아이콘(⊕)을 클릭하거나
-2. 메뉴(⋮) > 앱 설치 > "TWA Test App 설치"를 선택하세요.
-
-현재 beforeinstallprompt 이벤트가 발생하지 않았습니다.
-페이지를 새로고침하거나 잠시 후 다시 시도해보세요.`);
+        createForegroundNotification({
+          title: "💻 데스크톱 Chrome 설치 안내",
+          body: "주소창 오른쪽의 설치 아이콘(⊕)을 클릭하거나 메뉴에서 '앱 설치'를 선택하세요.",
+          icon: "/icons/icon-192x192.svg",
+          tag: "install-guide-desktop",
+        });
       } else if (isMobile && isChrome) {
-        alert(`모바일 Chrome에서 PWA 설치하기:
-1. 메뉴(⋮) > "홈 화면에 추가"를 선택하거나
-2. 하단에 나타나는 설치 배너를 사용하세요.
-
-현재 beforeinstallprompt 이벤트가 발생하지 않았습니다.`);
+        createForegroundNotification({
+          title: "📱 모바일 Chrome 설치 안내",
+          body: "메뉴(⋮)에서 '홈 화면에 추가'를 선택하거나 하단 설치 배너를 사용하세요.",
+          icon: "/icons/icon-192x192.svg",
+          tag: "install-guide-mobile",
+        });
       } else if (isIOS) {
         setShowIOSInstallGuide(true);
       } else {
-        alert("PWA 설치를 위해 Chrome 브라우저 또는 iOS Safari를 사용해주세요.");
+        createForegroundNotification({
+          title: "⚠️ 브라우저 호환성",
+          body: "PWA 설치를 위해 Chrome 브라우저 또는 iOS Safari를 사용해주세요.",
+          icon: "/icons/icon-192x192.svg",
+          tag: "browser-compatibility",
+        });
       }
       return;
     }
@@ -273,21 +279,54 @@ export default function Home() {
       console.log(`사용자 선택: ${outcome}`);
       setDeferredPrompt(null);
       setShowCustomBanner(false);
+
+      // 설치 결과 알림
+      if (outcome === "accepted") {
+        createForegroundNotification({
+          title: "✅ 앱 설치 완료",
+          body: "TWA 테스트 앱이 성공적으로 설치되었습니다!",
+          icon: "/icons/icon-192x192.svg",
+          tag: "install-success",
+        });
+      } else {
+        createForegroundNotification({
+          title: "ℹ️ 설치 취소됨",
+          body: "앱 설치가 취소되었습니다. 언제든지 다시 설치할 수 있습니다.",
+          icon: "/icons/icon-192x192.svg",
+          tag: "install-cancelled",
+        });
+      }
     } catch (error) {
       console.error("설치 프롬프트 오류:", error);
-      alert("설치 중 오류가 발생했습니다: " + (error instanceof Error ? error.message : String(error)));
+      createForegroundNotification({
+        title: "❌ 설치 오류",
+        body: `설치 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
+        icon: "/icons/icon-192x192.svg",
+        tag: "install-error",
+      });
     }
   };
 
   const handleCheckFeaturesClick = () => {
-    const features = [
-      `Geolocation: ${typeof navigator.geolocation !== "undefined" ? "지원됨" : "지원되지 않음"}`,
-      `Notification: ${"Notification" in window ? "지원됨" : "지원되지 않음"}`,
-      `Service Worker: ${"serviceWorker" in navigator ? "지원됨" : "지원되지 않음"}`,
-      `Camera: ${navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia !== "undefined" ? "지원됨" : "지원되지 않음"}`,
-    ].join("\n");
+    const features = {
+      geolocation: typeof navigator.geolocation !== "undefined",
+      notification: "Notification" in window,
+      serviceWorker: "serviceWorker" in navigator,
+      camera: navigator.mediaDevices && typeof navigator.mediaDevices.getUserMedia !== "undefined",
+    };
 
-    alert("지원되는 기능:\n" + features);
+    const supportedCount = Object.values(features).filter(Boolean).length;
+    const totalCount = Object.keys(features).length;
+
+    // 브라우저 알림으로 기능 지원 상태 표시
+    createForegroundNotification({
+      title: "🔧 기능 지원 상태",
+      body: `${supportedCount}/${totalCount}개 기능 지원됨 - 위치: ${features.geolocation ? "✓" : "✗"}, 알림: ${features.notification ? "✓" : "✗"}, SW: ${features.serviceWorker ? "✓" : "✗"}, 카메라: ${features.camera ? "✓" : "✗"}`,
+      icon: "/icons/icon-192x192.svg",
+      tag: "features-notification",
+    });
+
+    console.log("지원되는 기능:", features);
   };
 
   // 강제로 설치 프롬프트 테스트 함수 제거됨 (사용되지 않음)
@@ -317,31 +356,63 @@ export default function Home() {
         setNotificationStatus("알림 권한 허용됨");
         setBrowserPermission(result.permission || "granted");
         localStorage.setItem("fcm-token", result.token);
-        alert("알림 권한이 허용되었습니다!\nFCM 토큰: " + result.token.substring(0, 50) + "...");
+
+        // 성공 시 브라우저 알림으로 결과 표시
+        createForegroundNotification({
+          title: "✅ 알림 권한 허용됨",
+          body: `FCM 토큰이 생성되었습니다! 이제 푸시 알림을 받을 수 있습니다.`,
+          icon: "/icons/icon-192x192.svg",
+          tag: "permission-success",
+        });
       } else {
         // 권한 상태에 따른 정확한 메시지 표시
         if (result.permission === "denied") {
           setNotificationStatus("알림 권한 거부됨");
           setBrowserPermission("denied");
-          alert("알림 권한이 거부되었습니다.");
+          createForegroundNotification({
+            title: "❌ 알림 권한 거부됨",
+            body: "브라우저 설정에서 알림 권한을 허용해주세요.",
+            icon: "/icons/icon-192x192.svg",
+            tag: "permission-denied",
+          });
         } else if (result.permission === "default") {
           setNotificationStatus("알림 권한 요청 필요");
           setBrowserPermission("default");
-          alert("알림 권한 요청이 취소되었습니다.");
+          createForegroundNotification({
+            title: "⚠️ 권한 요청 취소됨",
+            body: "알림 권한 요청이 취소되었습니다.",
+            icon: "/icons/icon-192x192.svg",
+            tag: "permission-cancelled",
+          });
         } else if (result.permission === "granted") {
           setNotificationStatus("FCM 토큰 생성 실패");
           setBrowserPermission("granted");
-          alert("알림 권한은 허용되었지만 FCM 토큰 생성에 실패했습니다.\n오류: " + result.error);
+          createForegroundNotification({
+            title: "⚠️ 토큰 생성 실패",
+            body: `알림 권한은 허용되었지만 FCM 토큰 생성에 실패했습니다.`,
+            icon: "/icons/icon-192x192.svg",
+            tag: "token-failed",
+          });
         } else {
           setNotificationStatus("알림 권한 요청 실패");
           setBrowserPermission("unknown");
-          alert("알림 권한 요청 중 오류가 발생했습니다.\n오류: " + result.error);
+          createForegroundNotification({
+            title: "❌ 권한 요청 실패",
+            body: `알림 권한 요청 중 오류가 발생했습니다.`,
+            icon: "/icons/icon-192x192.svg",
+            tag: "permission-error",
+          });
         }
       }
     } catch (error) {
       console.error("알림 권한 요청 오류:", error);
       setNotificationStatus("알림 권한 요청 실패");
-      alert("알림 권한 요청 중 오류가 발생했습니다.");
+      createForegroundNotification({
+        title: "❌ 권한 요청 오류",
+        body: "알림 권한 요청 중 오류가 발생했습니다.",
+        icon: "/icons/icon-192x192.svg",
+        tag: "permission-error",
+      });
     } finally {
       setIsNotificationLoading(false);
     }
@@ -350,7 +421,13 @@ export default function Home() {
   // 테스트 알림 발송
   const sendTestNotification = async () => {
     if (!fcmToken) {
-      alert("FCM 토큰이 없습니다. 먼저 알림 권한을 허용해주세요.");
+      // FCM 토큰이 없을 때는 브라우저 알림으로 안내
+      createForegroundNotification({
+        title: "⚠️ 알림 설정 필요",
+        body: "FCM 토큰이 없습니다. 먼저 알림 권한을 허용해주세요.",
+        icon: "/icons/icon-192x192.svg",
+        tag: "error-notification",
+      });
       return;
     }
 
@@ -383,24 +460,42 @@ export default function Home() {
       console.log("알림 발송 응답:", result);
 
       if (result.success) {
-        alert(
-          `✅ 테스트 알림이 성공적으로 발송되었습니다!\n\n📱 알림이 표시되지 않는다면:\n1. 브라우저 알림 설정을 확인하세요\n2. 다른 탭에서 앱을 열어보세요\n3. 모바일에서는 백그라운드 상태로 전환해보세요`
-        );
-
-        // 포그라운드에서도 알림 표시 (테스트용, 메인 스레드에서만)
+        // 성공 시 브라우저 알림으로 결과 표시
         createForegroundNotification({
-          title: "🔔 TWA 테스트 알림",
-          body: `포그라운드 테스트 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+          title: "✅ 알림 발송 성공",
+          body: "테스트 알림이 성공적으로 발송되었습니다! 백그라운드에서 알림을 확인해보세요.",
           icon: "/icons/icon-192x192.svg",
-          tag: "test-notification",
+          tag: "success-notification",
         });
+
+        // 추가로 포그라운드 테스트 알림도 표시
+        setTimeout(() => {
+          createForegroundNotification({
+            title: "🔔 TWA 테스트 알림",
+            body: `포그라운드 테스트 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+            icon: "/icons/icon-192x192.svg",
+            tag: "test-notification",
+          });
+        }, 1000);
       } else {
         console.error("알림 발송 실패:", result);
-        alert(`❌ 알림 발송 실패\n\n오류: ${result.error}\n상세: ${result.details || "없음"}`);
+        // 실패 시 브라우저 알림으로 오류 표시
+        createForegroundNotification({
+          title: "❌ 알림 발송 실패",
+          body: `오류: ${result.error}`,
+          icon: "/icons/icon-192x192.svg",
+          tag: "error-notification",
+        });
       }
     } catch (error) {
       console.error("알림 발송 오류:", error);
-      alert(`❌ 알림 발송 중 오류가 발생했습니다.\n\n오류: ${error instanceof Error ? error.message : String(error)}`);
+      // 예외 발생 시 브라우저 알림으로 오류 표시
+      createForegroundNotification({
+        title: "❌ 알림 발송 오류",
+        body: `오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
+        icon: "/icons/icon-192x192.svg",
+        tag: "error-notification",
+      });
     } finally {
       setIsNotificationLoading(false);
     }
@@ -410,7 +505,12 @@ export default function Home() {
   const sendBroadcastNotification = async () => {
     const savedTokens = localStorage.getItem("fcm-token");
     if (!savedTokens) {
-      alert("저장된 FCM 토큰이 없습니다.");
+      createForegroundNotification({
+        title: "⚠️ 토큰 없음",
+        body: "저장된 FCM 토큰이 없습니다.",
+        icon: "/icons/icon-192x192.svg",
+        tag: "error-notification",
+      });
       return;
     }
 
@@ -443,26 +543,42 @@ export default function Home() {
       console.log("전체 알림 발송 응답:", result);
 
       if (result.success) {
-        alert(
-          `✅ 전체 알림이 성공적으로 발송되었습니다!\n\n발송 결과:\n- 성공: ${result.result?.successCount || 1}개\n- 실패: ${
-            result.result?.failureCount || 0
-          }개`
-        );
-
-        // 포그라운드에서도 알림 표시 (테스트용, 메인 스레드에서만)
+        // 성공 시 브라우저 알림으로 결과 표시
         createForegroundNotification({
-          title: "📢 전체 알림",
-          body: `전체 사용자 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+          title: "✅ 전체 알림 발송 성공",
+          body: `발송 완료! 성공: ${result.result?.successCount || 1}개, 실패: ${result.result?.failureCount || 0}개`,
           icon: "/icons/icon-192x192.svg",
-          tag: "broadcast-notification",
+          tag: "broadcast-success-notification",
         });
+
+        // 추가로 포그라운드에서도 전체 알림 표시
+        setTimeout(() => {
+          createForegroundNotification({
+            title: "📢 전체 알림",
+            body: `전체 사용자 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
+            icon: "/icons/icon-192x192.svg",
+            tag: "broadcast-notification",
+          });
+        }, 1000);
       } else {
         console.error("전체 알림 발송 실패:", result);
-        alert(`❌ 전체 알림 발송 실패\n\n오류: ${result.error}\n상세: ${result.details || "없음"}`);
+        // 실패 시 브라우저 알림으로 오류 표시
+        createForegroundNotification({
+          title: "❌ 전체 알림 발송 실패",
+          body: `오류: ${result.error}`,
+          icon: "/icons/icon-192x192.svg",
+          tag: "error-notification",
+        });
       }
     } catch (error) {
       console.error("전체 알림 발송 오류:", error);
-      alert(`❌ 전체 알림 발송 중 오류가 발생했습니다.\n\n오류: ${error instanceof Error ? error.message : String(error)}`);
+      // 예외 발생 시 브라우저 알림으로 오류 표시
+      createForegroundNotification({
+        title: "❌ 전체 알림 발송 오류",
+        body: `오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
+        icon: "/icons/icon-192x192.svg",
+        tag: "error-notification",
+      });
     } finally {
       setIsNotificationLoading(false);
     }
@@ -748,7 +864,14 @@ export default function Home() {
                 localStorage: localStorage.getItem("fcm-token") ? "있음" : "없음",
               };
               console.log("권한 상태 디버깅:", debugInfo);
-              alert(`권한 상태 디버깅:\n${JSON.stringify(debugInfo, null, 2)}`);
+
+              // 브라우저 알림으로 디버깅 정보 표시
+              createForegroundNotification({
+                title: "🔍 권한 상태 확인",
+                body: `브라우저: ${currentPermission}, 상태: ${notificationStatus}, 토큰: ${fcmToken ? "있음" : "없음"}`,
+                icon: "/icons/icon-192x192.svg",
+                tag: "debug-notification",
+              });
             }}
           >
             🔍 권한 상태 확인
@@ -763,12 +886,22 @@ export default function Home() {
                 });
                 const result = await response.json();
                 console.log("API 상태:", result);
-                alert(
-                  `🔧 API 상태 확인:\n\n${result.message}\n\n사용 가능한 엔드포인트:\n- POST: ${result.endpoints?.POST}\n\n필수 파라미터:\n- title: ${result.endpoints?.body?.title}\n- message: ${result.endpoints?.body?.message}\n- token 또는 tokens 필요`
-                );
+
+                // 브라우저 알림으로 API 상태 표시
+                createForegroundNotification({
+                  title: "🔧 API 상태 확인",
+                  body: `${result.message} - POST 엔드포인트 사용 가능`,
+                  icon: "/icons/icon-192x192.svg",
+                  tag: "api-status-notification",
+                });
               } catch (error) {
                 console.error("API 상태 확인 오류:", error);
-                alert(`❌ API 상태 확인 실패:\n${error instanceof Error ? error.message : String(error)}`);
+                createForegroundNotification({
+                  title: "❌ API 상태 확인 실패",
+                  body: `오류: ${error instanceof Error ? error.message : String(error)}`,
+                  icon: "/icons/icon-192x192.svg",
+                  tag: "api-error-notification",
+                });
               }
             }}
           >
@@ -825,14 +958,23 @@ export default function Home() {
 
                 console.log("Android 푸시 알림 디버깅:", debugInfo);
 
-                const debugText = Object.entries(debugInfo)
-                  .map(([key, value]) => `${key}: ${typeof value === "object" ? JSON.stringify(value) : value}`)
-                  .join("\n");
-
-                alert(`🤖 Android 푸시 알림 디버깅 정보:\n\n${debugText}`);
+                // 브라우저 알림으로 Android 디버깅 정보 표시
+                const isAndroid = /Android/i.test(navigator.userAgent);
+                const isChrome = /Chrome/i.test(navigator.userAgent);
+                createForegroundNotification({
+                  title: "🤖 Android 디버깅 정보",
+                  body: `Android: ${isAndroid ? "예" : "아니오"}, Chrome: ${isChrome ? "예" : "아니오"}, SW: ${debugInfo.swRegistration !== "not registered" ? "등록됨" : "미등록"}`,
+                  icon: "/icons/icon-192x192.svg",
+                  tag: "android-debug-notification",
+                });
               } catch (error) {
                 console.error("디버깅 정보 수집 오류:", error);
-                alert(`❌ 디버깅 정보 수집 실패:\n${error instanceof Error ? error.message : String(error)}`);
+                createForegroundNotification({
+                  title: "❌ 디버깅 정보 수집 실패",
+                  body: `오류: ${error instanceof Error ? error.message : String(error)}`,
+                  icon: "/icons/icon-192x192.svg",
+                  tag: "debug-error-notification",
+                });
               }
             }}
           >
