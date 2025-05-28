@@ -84,7 +84,6 @@ export function usePWA() {
         title: "🎉 설치 완료!",
         body: "TWA 테스트 앱이 성공적으로 설치되었습니다!",
         icon: "/icons/icon-192x192.svg",
-        tag: "app-installed",
       });
     };
 
@@ -112,14 +111,12 @@ export function usePWA() {
           title: "💻 데스크톱 Chrome 설치 안내",
           body: "주소창 오른쪽의 설치 아이콘(⊕)을 클릭하거나 메뉴에서 '앱 설치'를 선택하세요.",
           icon: "/icons/icon-192x192.svg",
-          tag: "install-guide-desktop",
         });
       } else if (isMobile && isChrome) {
         createForegroundNotification({
           title: "📱 모바일 Chrome 설치 안내",
           body: "메뉴(⋮)에서 '홈 화면에 추가'를 선택하거나 하단 설치 배너를 사용하세요.",
           icon: "/icons/icon-192x192.svg",
-          tag: "install-guide-mobile",
         });
       } else if (isIOS) {
         setShowIOSInstallGuide(true);
@@ -128,7 +125,6 @@ export function usePWA() {
           title: "⚠️ 브라우저 호환성",
           body: "PWA 설치를 위해 Chrome 브라우저 또는 iOS Safari를 사용해주세요.",
           icon: "/icons/icon-192x192.svg",
-          tag: "browser-compatibility",
         });
       }
       return;
@@ -147,14 +143,12 @@ export function usePWA() {
           title: "✅ 앱 설치 완료",
           body: "TWA 테스트 앱이 성공적으로 설치되었습니다!",
           icon: "/icons/icon-192x192.svg",
-          tag: "install-success",
         });
       } else {
         createForegroundNotification({
           title: "ℹ️ 설치 취소됨",
           body: "앱 설치가 취소되었습니다. 언제든지 다시 설치할 수 있습니다.",
           icon: "/icons/icon-192x192.svg",
-          tag: "install-cancelled",
         });
       }
     } catch (error) {
@@ -163,7 +157,6 @@ export function usePWA() {
         title: "❌ 설치 오류",
         body: `설치 중 오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
         icon: "/icons/icon-192x192.svg",
-        tag: "install-error",
       });
     }
   };

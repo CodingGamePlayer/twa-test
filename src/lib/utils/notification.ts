@@ -59,7 +59,6 @@ export async function createNotification(options: NotificationOptions): Promise<
           icon,
           tag,
           data,
-          badge: icon,
         });
         return true;
       }
@@ -107,11 +106,45 @@ export function createForegroundNotification(options: NotificationOptions): bool
 
   try {
     if ("Notification" in window && Notification.permission === "granted") {
+      // tag가 제공되지 않은 경우 고유한 tag 생성
+      const uniqueTag = options.tag || `foreground-notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+      // 알림 개수 관리 (최대 5개까지만 유지)
+      if ("serviceWorker" in navigator && navigator.serviceWorker.ready) {
+        navigator.serviceWorker.ready
+          .then((registration) => {
+            registration
+              .getNotifications()
+              .then((notifications) => {
+                // 포그라운드 알림만 필터링 (tag가 foreground-notification으로 시작하는 것들)
+                const foregroundNotifications = notifications.filter((n) => n.tag && n.tag.startsWith("foreground-notification-"));
+
+                // 5개 이상이면 가장 오래된 것부터 제거
+                if (foregroundNotifications.length >= 5) {
+                  const sortedNotifications = foregroundNotifications.sort((a, b) => (a.data?.timestamp || 0) - (b.data?.timestamp || 0));
+
+                  // 가장 오래된 알림들 제거
+                  const toRemove = sortedNotifications.slice(0, foregroundNotifications.length - 4);
+                  toRemove.forEach((notification) => notification.close());
+                }
+              })
+              .catch((err) => {
+                console.warn("알림 관리 중 오류:", err);
+              });
+          })
+          .catch((err) => {
+            console.warn("서비스 워커 준비 중 오류:", err);
+          });
+      }
+
       new Notification(options.title, {
         body: options.body,
-        icon: options.icon,
-        tag: options.tag,
-        data: options.data,
+        tag: uniqueTag,
+        data: {
+          ...options.data,
+          timestamp: Date.now(),
+          notificationId: uniqueTag,
+        },
       });
       return true;
     }

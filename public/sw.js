@@ -9,7 +9,12 @@ const urlsToCache = [
     '/icons/icon-512x512.svg'
 ];
 
-// 서비스 워커 설치
+/**
+ * 서비스 워커 설치 이벤트
+ * 역할: PWA 앱의 핵심 파일들을 브라우저 캐시에 저장
+ * 시점: 서비스 워커가 처음 등록되거나 업데이트될 때
+ * 목적: 오프라인에서도 앱이 동작할 수 있도록 필수 리소스 캐싱
+ */
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME)
@@ -36,7 +41,12 @@ self.addEventListener('install', (event) => {
     );
 });
 
-// 네트워크 요청 인터셉트
+/**
+ * 네트워크 요청 인터셉트 이벤트
+ * 역할: 모든 네트워크 요청을 가로채서 캐시 우선 전략 적용
+ * 동작: 캐시에 있으면 캐시 반환, 없으면 네트워크에서 가져와서 캐시 저장
+ * 목적: 빠른 로딩 속도와 오프라인 지원
+ */
 self.addEventListener('fetch', (event) => {
     // POST 요청이나 Firebase API 요청은 캐시하지 않음
     if (event.request.method !== 'GET' ||
@@ -76,7 +86,12 @@ self.addEventListener('fetch', (event) => {
     );
 });
 
-// 이전 캐시 정리
+/**
+ * 서비스 워커 활성화 이벤트
+ * 역할: 이전 버전의 캐시 정리 및 새 서비스 워커 활성화
+ * 시점: 새 서비스 워커가 설치 완료 후 활성화될 때
+ * 목적: 오래된 캐시 제거로 저장 공간 절약 및 최신 상태 유지
+ */
 self.addEventListener('activate', (event) => {
     const cacheWhitelist = [CACHE_NAME];
 
@@ -98,57 +113,12 @@ self.addEventListener('activate', (event) => {
     );
 });
 
-// Firebase Cloud Messaging 설정
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
-
-// Firebase 설정 (실제 값으로 교체 필요)
-const firebaseConfig = {
-    apiKey: "your_api_key_here",
-    authDomain: "your_project_id.firebaseapp.com",
-    projectId: "your_project_id",
-    storageBucket: "your_project_id.appspot.com",
-    messagingSenderId: "your_sender_id",
-    appId: "your_app_id"
-};
-
-// Firebase 초기화 (환경 변수가 설정된 경우에만)
-if (firebaseConfig.apiKey !== "your_api_key_here") {
-    firebase.initializeApp(firebaseConfig);
-    const messaging = firebase.messaging();
-
-    // 백그라운드 메시지 처리
-    messaging.onBackgroundMessage((payload) => {
-        console.log('백그라운드 메시지 수신:', payload);
-
-        const notificationTitle = payload.notification?.title || '새 알림';
-        const notificationOptions = {
-            body: payload.notification?.body || '새로운 메시지가 도착했습니다.',
-            icon: '/icons/icon-192x192.svg',
-            badge: '/icons/icon-192x192.svg',
-            tag: 'fcm-notification',
-            data: payload.data || {},
-            requireInteraction: true,
-            silent: false,
-            vibrate: [200, 100, 200],
-            actions: [
-                {
-                    action: 'open',
-                    title: '열기',
-                    icon: '/icons/icon-192x192.svg'
-                },
-                {
-                    action: 'close',
-                    title: '닫기'
-                }
-            ]
-        };
-
-        return self.registration.showNotification(notificationTitle, notificationOptions);
-    });
-}
-
-// 알림 클릭 처리 (개선된 버전)
+/**
+ * 알림 클릭 이벤트
+ * 역할: 사용자가 푸시 알림을 클릭했을 때의 동작 처리
+ * 동작: 알림 닫기 → 앱 창 포커스 또는 새 창 열기
+ * 목적: 알림을 통한 앱 재진입 및 사용자 경험 향상
+ */
 self.addEventListener('notificationclick', (event) => {
     console.log('알림 클릭됨:', event);
 
@@ -188,13 +158,24 @@ self.addEventListener('notificationclick', (event) => {
     );
 });
 
-// 알림 닫기 처리
+/**
+ * 알림 닫기 이벤트
+ * 역할: 사용자가 알림을 닫았을 때의 동작 처리
+ * 동작: 알림 닫기 로그 기록 (필요시 분석 데이터 전송)
+ * 목적: 사용자 행동 분석 및 알림 효과 측정
+ */
 self.addEventListener('notificationclose', (event) => {
     console.log('알림 닫힘:', event);
     // 필요시 분석 데이터 전송
 });
 
-// 푸시 이벤트 처리 (FCM 외의 푸시도 처리)
+/**
+ * 푸시 이벤트 처리 (FCM 푸시 알림 수신)
+ * 역할: Firebase FCM 서버에서 전송된 푸시 메시지를 브라우저 알림으로 변환
+ * 시점: 앱이 백그라운드/종료 상태일 때 푸시 메시지 수신
+ * 동작: FCM 데이터 파싱 → 알림 옵션 구성 → 시스템 알림 표시
+ * 목적: 실시간 푸시 알림을 통한 사용자 재참여 유도
+ */
 self.addEventListener('push', (event) => {
     console.log('푸시 이벤트 수신:', event);
 
@@ -204,32 +185,78 @@ self.addEventListener('push', (event) => {
             console.log('푸시 데이터:', payload);
 
             const notificationTitle = payload.notification?.title || payload.title || '새 알림';
+            // 고유한 tag 생성 (타임스탬프 + 랜덤값)
+            const uniqueTag = `push-notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
             const notificationOptions = {
                 body: payload.notification?.body || payload.body || '새로운 메시지가 도착했습니다.',
-                icon: payload.notification?.icon || '/icons/icon-192x192.svg',
-                badge: '/icons/icon-192x192.svg',
-                tag: payload.tag || 'push-notification',
-                data: payload.data || payload,
+                icon: '/icons/icon-192x192.svg',
+                tag: uniqueTag, // 고유한 tag로 변경
+                data: {
+                    ...payload.data,
+                    ...payload,
+                    timestamp: Date.now(),
+                    notificationId: uniqueTag
+                },
                 requireInteraction: true,
                 silent: false,
-                vibrate: [200, 100, 200]
+                vibrate: [200, 100, 200],
+                actions: [
+                    {
+                        action: 'open',
+                        title: '열기'
+                    },
+                    {
+                        action: 'close',
+                        title: '닫기'
+                    }
+                ]
             };
 
+            // 알림 개수 관리 (최대 5개까지만 유지)
             event.waitUntil(
-                self.registration.showNotification(notificationTitle, notificationOptions)
+                self.registration.getNotifications()
+                    .then(notifications => {
+                        // 푸시 알림만 필터링
+                        const pushNotifications = notifications.filter(n =>
+                            n.tag && n.tag.startsWith('push-notification-')
+                        );
+
+                        // 5개 이상이면 가장 오래된 것부터 제거
+                        if (pushNotifications.length >= 5) {
+                            const sortedNotifications = pushNotifications.sort((a, b) =>
+                                (a.data?.timestamp || 0) - (b.data?.timestamp || 0)
+                            );
+
+                            // 가장 오래된 알림들 제거
+                            const toRemove = sortedNotifications.slice(0, pushNotifications.length - 4);
+                            toRemove.forEach(notification => notification.close());
+                        }
+
+                        return self.registration.showNotification(notificationTitle, notificationOptions);
+                    })
+                    .catch(err => {
+                        console.error('푸시 알림 관리 오류:', err);
+                        return self.registration.showNotification(notificationTitle, notificationOptions);
+                    })
             );
         } catch (error) {
             console.error('푸시 데이터 파싱 오류:', error);
-            // 기본 알림 표시
+            // 기본 알림 표시 (고유한 tag 사용)
+            const uniqueTag = `default-notification-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
             event.waitUntil(
                 self.registration.showNotification('새 알림', {
                     body: '새로운 메시지가 도착했습니다.',
                     icon: '/icons/icon-192x192.svg',
-                    tag: 'default-notification'
+                    tag: uniqueTag,
+                    data: {
+                        timestamp: Date.now(),
+                        notificationId: uniqueTag
+                    }
                 })
             );
         }
     }
 });
 
-console.log('통합 서비스 워커 설정 완료'); 
+console.log('서비스 워커 설정 완료'); 

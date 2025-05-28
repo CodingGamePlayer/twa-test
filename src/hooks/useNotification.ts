@@ -71,7 +71,6 @@ export function useNotification() {
               createForegroundNotification({
                 title: messagePayload.notification?.title || "새 알림",
                 body: messagePayload.notification?.body,
-                icon: "/icons/icon-192x192.svg",
               });
             }
           })
@@ -114,8 +113,6 @@ export function useNotification() {
         createForegroundNotification({
           title: "✅ 알림 권한 허용됨",
           body: `FCM 토큰이 생성되었습니다! 이제 푸시 알림을 받을 수 있습니다.`,
-          icon: "/icons/icon-192x192.svg",
-          tag: "permission-success",
         });
       } else {
         if (result.permission === "denied") {
@@ -124,8 +121,6 @@ export function useNotification() {
           createForegroundNotification({
             title: "❌ 알림 권한 거부됨",
             body: "브라우저 설정에서 알림 권한을 허용해주세요.",
-            icon: "/icons/icon-192x192.svg",
-            tag: "permission-denied",
           });
         } else if (result.permission === "default") {
           setNotificationStatus("알림 권한 요청 필요");
@@ -133,8 +128,6 @@ export function useNotification() {
           createForegroundNotification({
             title: "⚠️ 권한 요청 취소됨",
             body: "알림 권한 요청이 취소되었습니다.",
-            icon: "/icons/icon-192x192.svg",
-            tag: "permission-cancelled",
           });
         } else if (result.permission === "granted") {
           setNotificationStatus("FCM 토큰 생성 실패");
@@ -142,8 +135,6 @@ export function useNotification() {
           createForegroundNotification({
             title: "⚠️ 토큰 생성 실패",
             body: `알림 권한은 허용되었지만 FCM 토큰 생성에 실패했습니다.`,
-            icon: "/icons/icon-192x192.svg",
-            tag: "token-failed",
           });
         } else {
           setNotificationStatus("알림 권한 요청 실패");
@@ -151,8 +142,6 @@ export function useNotification() {
           createForegroundNotification({
             title: "❌ 권한 요청 실패",
             body: `알림 권한 요청 중 오류가 발생했습니다.`,
-            icon: "/icons/icon-192x192.svg",
-            tag: "permission-error",
           });
         }
       }
@@ -162,8 +151,6 @@ export function useNotification() {
       createForegroundNotification({
         title: "❌ 권한 요청 오류",
         body: "알림 권한 요청 중 오류가 발생했습니다.",
-        icon: "/icons/icon-192x192.svg",
-        tag: "permission-error",
       });
     } finally {
       setIsNotificationLoading(false);
@@ -176,8 +163,6 @@ export function useNotification() {
       createForegroundNotification({
         title: "⚠️ 알림 설정 필요",
         body: "FCM 토큰이 없습니다. 먼저 알림 권한을 허용해주세요.",
-        icon: "/icons/icon-192x192.svg",
-        tag: "error-notification",
       });
       return;
     }
@@ -214,16 +199,12 @@ export function useNotification() {
         createForegroundNotification({
           title: "✅ 알림 발송 성공",
           body: "테스트 알림이 성공적으로 발송되었습니다! 백그라운드에서 알림을 확인해보세요.",
-          icon: "/icons/icon-192x192.svg",
-          tag: "success-notification",
         });
 
         setTimeout(() => {
           createForegroundNotification({
             title: "🔔 TWA 테스트 알림",
             body: `포그라운드 테스트 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
-            icon: "/icons/icon-192x192.svg",
-            tag: "test-notification",
           });
         }, 1000);
       } else {
@@ -231,8 +212,6 @@ export function useNotification() {
         createForegroundNotification({
           title: "❌ 알림 발송 실패",
           body: `오류: ${result.error}`,
-          icon: "/icons/icon-192x192.svg",
-          tag: "error-notification",
         });
       }
     } catch (error) {
@@ -240,8 +219,6 @@ export function useNotification() {
       createForegroundNotification({
         title: "❌ 알림 발송 오류",
         body: `오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
-        icon: "/icons/icon-192x192.svg",
-        tag: "error-notification",
       });
     } finally {
       setIsNotificationLoading(false);
@@ -255,8 +232,6 @@ export function useNotification() {
       createForegroundNotification({
         title: "⚠️ 토큰 없음",
         body: "저장된 FCM 토큰이 없습니다.",
-        icon: "/icons/icon-192x192.svg",
-        tag: "error-notification",
       });
       return;
     }
@@ -293,16 +268,12 @@ export function useNotification() {
         createForegroundNotification({
           title: "✅ 전체 알림 발송 성공",
           body: `발송 완료! 성공: ${result.result?.successCount || 1}개, 실패: ${result.result?.failureCount || 0}개`,
-          icon: "/icons/icon-192x192.svg",
-          tag: "broadcast-success-notification",
         });
 
         setTimeout(() => {
           createForegroundNotification({
             title: "📢 전체 알림",
             body: `전체 사용자 알림입니다! 시간: ${new Date().toLocaleTimeString("ko-KR")}`,
-            icon: "/icons/icon-192x192.svg",
-            tag: "broadcast-notification",
           });
         }, 1000);
       } else {
@@ -310,8 +281,6 @@ export function useNotification() {
         createForegroundNotification({
           title: "❌ 전체 알림 발송 실패",
           body: `오류: ${result.error}`,
-          icon: "/icons/icon-192x192.svg",
-          tag: "error-notification",
         });
       }
     } catch (error) {
@@ -319,8 +288,6 @@ export function useNotification() {
       createForegroundNotification({
         title: "❌ 전체 알림 발송 오류",
         body: `오류가 발생했습니다: ${error instanceof Error ? error.message : String(error)}`,
-        icon: "/icons/icon-192x192.svg",
-        tag: "error-notification",
       });
     } finally {
       setIsNotificationLoading(false);
